@@ -1,5 +1,5 @@
 import http from 'http';
-import { readFile } from 'fs/promises';
+import { readFile, writeFile } from 'fs/promises';
 import path from "path";
 import { fileURLToPath } from 'url';
 
@@ -18,6 +18,19 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 // deconstruct the object (order of variables doesnt matter)
 const {port, hostname} = config;
 
+const postsPath = path.join(__dirname, "posts.json");
+
+// function to load posts from posts.json
+async function loadPosts() {
+    const data = await readFile(postsPath, "utf-8");
+    return JSON.parse(data)
+}
+
+async function savePosts(posts) {
+    await writeFile(postsPath, JSON.stringify(posts, null, 2), "utf-8");
+}
+
+
 function getRequestBody(req) {
     return new Promise((resolve,reject) => {
         let body = "";
@@ -34,29 +47,8 @@ function getRequestBody(req) {
 };
 
 // list of posts with specific keys
-let posts = [
-    {
-        id: 1, 
-        title: "Mein erster Blogbeitrag",
-        content: "Das sind die Inhalte von meinem ERSTEN Blogbeitrag. ",
-        author: "Patryk A.",
-        date: "25-07-29"
-    },
-    {
-        id: 2, 
-        title: "Mein zweiter Blogbeitrag",
-        content: "Das sind die Inhalte von meinem ZWEITEN Blogbeitrag. ",
-        author: "Patryk B.",
-        date: "25-07-30"
-    },
-    {
-        id: 3, 
-        title: "Mein dritter Blogbeitrag",
-        content: "Das sind die Inhalte von meinem DRITTEN Blogbeitrag. ",
-        author: "Patryk C.",
-        date: "25-07-31"
-    }
-]
+// let posts = 
+let posts = await loadPosts();
 // the next ID for post
 let nextId = posts.length;
 
@@ -108,6 +100,8 @@ const server = http.createServer(async (req, res) => {
             newPost.date = new Date().toISOString().split("T")[0];
 
             posts.push(newPost)
+            await savePosts(posts);
+            
             res.writeHead(201, {"Content-Type": "application/json"});
             res.end(JSON.stringify(newPost));
 
@@ -130,7 +124,5 @@ server.listen(port, hostname, () => {
     console.log(`Teste den GET /posts Endpunkt unter http://${hostname}:${port}/posts`);
     console.log(`Blogbeitrag 1 Testen: http://${hostname}:${port}/posts/1`);
     console.log(`Nicht existierende Blogbeitrag: http://${hostname}:${port}/posts/99`);
+    console.log(`Neue Beiträge werden in posts.json gespeichert`)
 });
-
-// Schritt 10: Refactoring: Asynchrones Parsen des POST-Request-Bodys
-
