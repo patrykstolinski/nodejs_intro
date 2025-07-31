@@ -1,5 +1,5 @@
 import http from 'http';
-import { readFileSync } from 'fs';
+import { readFile } from 'fs/promises';
 import path from "path";
 import { fileURLToPath } from 'url';
 
@@ -11,14 +11,27 @@ const __dirname = path.dirname(__filename);
 const configPath = path.join(__dirname, "config.json");
 
 // use json readFileSync to open and read the file, then parse it as JSON
-const config = JSON.parse(readFileSync(configPath, "utf-8"));
+const config = JSON.parse(await readFile(configPath, "utf-8"));
 
-// read what is under the json keys
-// const hostname = config.hostname;
-// const port = config.port;
-
+// simulated delay
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 // deconstruct the object (order of variables doesnt matter)
 const {port, hostname} = config;
+
+function getRequestBody(req) {
+    return new Promise((resolve,reject) => {
+        let body = "";
+        req.on("data", teil => {
+            body += teil.toString();
+        });
+        req.on("end", () => {
+            resolve(body);
+        });
+        req.on("error", fehler => {
+            reject(fehler);
+        });
+    });
+};
 
 // list of posts with specific keys
 let posts = [
@@ -38,17 +51,17 @@ let posts = [
     },
     {
         id: 3, 
-        title: "Mein zweiter Blogbeitrag",
+        title: "Mein dritter Blogbeitrag",
         content: "Das sind die Inhalte von meinem DRITTEN Blogbeitrag. ",
         author: "Patryk C.",
         date: "25-07-31"
     }
 ]
 // the next ID for post
-let nextId = 3;
+let nextId = posts.length;
 
 // create server with http with request/response parameters, and void function that tells you it received the request from xx
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
     console.log(`Anfrage erhalten: ${req.method} ${req.url}`);
 
     // enables Cross-Origin Resource Sharing (CORS) by setting an HTTP response header that tells the browser "I (this server) allow requests from any origin."
@@ -65,8 +78,47 @@ const server = http.createServer((req, res) => {
     }
     if (req.method === "GET" && req.url === "/posts") {
         res.writeHead(200, {"Content-Type": "application/json"}); // status OK
+        await delay(1000);
         res.end(JSON.stringify(posts)); //make strings out of JSON
-    } else {
+    } else if (req.method === "GET" && req.url.match(/^\/posts\/(\d+)$/)) {
+        const ID = parseInt(req.url.split("/")[2]); // variable nur für ID der Eintrag
+        const post = posts.find(post => post.id === ID);
+        if (post) {
+            res.writeHead(200, {"Content-Type": "application/json"});
+            await delay(1000);
+            res.end(JSON.stringify(post));
+        } else {
+            res.writeHead(404, {"Content-Type": "application/json"});
+            res.end(JSON.stringify({message: "ID nicht gefunden"}));
+        }
+
+    } else if (req.method=== "POST" && req.url === "/posts") {
+        // res.writeHead(201, {"Content-Type": "application/json"});
+        // res.end(JSON.stringify({message: "Blogbeitrag Erstellung empfangen (body noch nicht erstellt)"}));
+        try {
+            const body = await getRequestBody(req);
+            const newPost = JSON.parse(body);
+
+            if (!newPost.title || !newPost.author || !newPost.content) {
+                res.writeHead(400, {"Content-Type": "application/json"});
+                res.end(JSON.stringify({message: "Bad request: Fehlende Felder (title/author/content)"}));
+                return;
+            }
+            newPost.id = ++nextId;
+            newPost.date = new Date().toISOString().split("T")[0];
+
+            posts.push(newPost)
+            res.writeHead(201, {"Content-Type": "application/json"});
+            res.end(JSON.stringify(newPost));
+
+
+        } catch (fehler) {
+            console.error("Fehler beim Parsen JSON", fehler);
+            res.writeHead(400, {"Content-Type": "application/json"});
+            res.end(JSON.stringify({message: "Bad POST request, JSON ungültig"}));
+        }
+    }
+    else {
         res.writeHead(404, {"Content-Type": "application/json"});
         res.end(JSON.stringify({message: "Endpunkt nicht gefunden"}));
     }
@@ -76,4 +128,9 @@ const server = http.createServer((req, res) => {
 server.listen(port, hostname, () => {
     console.log(`Server gestartet unter http://${hostname}:${port}/`);
     console.log(`Teste den GET /posts Endpunkt unter http://${hostname}:${port}/posts`);
+    console.log(`Blogbeitrag 1 Testen: http://${hostname}:${port}/posts/1`);
+    console.log(`Nicht existierende Blogbeitrag: http://${hostname}:${port}/posts/99`);
 });
+
+// Schritt 10: Refactoring: Asynchrones Parsen des POST-Request-Bodys
+
